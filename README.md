@@ -36,3 +36,9 @@ npm run dev
 ```sh
 npm run build
 ```
+
+## Table QR ordering
+
+Each table's details in the admin Tables page show a QR code that guests can scan to open the menu and submit an order for that table without signing in. The QR image is generated in the browser.
+
+QR links use the current site origin, and the API defaults to that same hostname on port `8000`. For phone testing, start the frontend with `npm run dev -- --host 0.0.0.0` and Laravel with `php artisan serve --host 0.0.0.0`; open the frontend using the computer's LAN IP (not `localhost`) while the phone is on the same Wi-Fi. If the API runs on another host, set `VITE_API_URL` before starting/building the frontend. The API CORS config allows localhost and private LAN origins.

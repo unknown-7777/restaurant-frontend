@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="p-6">
+    <div class="p-4 sm:p-6">
 
       <div class="flex items-center justify-between mb-6">
         <div>
@@ -118,8 +118,8 @@
 
     </div>
 
-    <div v-if="showCategoryModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
+    <div v-if="showCategoryModal" class="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-3 overflow-y-auto">
+      <div class="bg-white rounded-2xl p-5 sm:p-6 w-full max-w-sm shadow-xl max-h-[calc(100dvh-1.5rem)] overflow-y-auto">
         <h2 class="text-lg font-bold text-gray-900 mb-4">Add Category</h2>
         <div class="space-y-3">
           <div>
@@ -161,8 +161,8 @@
       </div>
     </div>
 
-    <div v-if="showItemModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto">
+    <div v-if="showItemModal" class="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-3 overflow-y-auto">
+      <div class="bg-white rounded-2xl p-5 sm:p-6 w-full max-w-md shadow-xl max-h-[calc(100dvh-1.5rem)] overflow-y-auto">
         <h2 class="text-lg font-bold text-gray-900 mb-4">
           {{ editingItem ? 'Edit Menu Item' : 'Add Menu Item' }}
         </h2>
@@ -186,6 +186,8 @@
             <input
               v-model="itemForm.name"
               type="text"
+              required
+              maxlength="255"
               placeholder="e.g. Grilled Chicken"
               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
             />
@@ -206,11 +208,27 @@
             <input
               v-model.number="itemForm.price"
               type="number"
+              required
               min="0"
               step="0.01"
               placeholder="0.00"
               class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
             />
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Item photo</label>
+            <div class="flex items-center gap-4">
+              <div class="w-20 h-20 rounded-lg bg-gray-100 overflow-hidden flex items-center justify-center shrink-0">
+                <img v-if="imagePreview" :src="imagePreview" :alt="itemForm.name || 'Menu item preview'" class="w-full h-full object-cover" />
+                <span v-else class="text-2xl">🍽</span>
+              </div>
+              <div class="min-w-0">
+                <input ref="imageInput" type="file" accept="image/jpeg,image/png,image/webp" class="block w-full text-sm text-gray-500 file:mr-3 file:rounded-lg file:border-0 file:bg-orange-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-orange-700 hover:file:bg-orange-100" @change="selectImage" />
+                <p class="text-xs text-gray-400 mt-1">JPEG, PNG or WebP, up to 5 MB.</p>
+                <button v-if="selectedImage" type="button" class="text-xs text-red-500 mt-1" @click="clearImage">Remove selected image</button>
+              </div>
+            </div>
           </div>
 
           <div>
@@ -239,7 +257,8 @@
 
         <div class="flex gap-3 mt-6">
           <button
-            @click="showItemModal = false"
+            @click="closeItemModal"
+            :disabled="itemLoading"
             class="flex-1 border border-gray-300 text-gray-700 text-sm font-medium py-2 rounded-lg hover:bg-gray-50"
           >
             Cancel
@@ -259,7 +278,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import AppLayout from '../../components/layout/AppLayout.vue'
 import { categoriesApi } from '../../api/categories'
 import { menuItemsApi } from '../../api/menuItems'
@@ -278,6 +297,9 @@ const showItemModal = ref(false)
 const itemLoading = ref(false)
 const itemError = ref('')
 const editingItem = ref(null)
+const imageInput = ref(null)
+const selectedImage = ref(null)
+const imagePreview = ref('')
 const itemForm = ref({
   category_id: '',
   name: '',
@@ -326,6 +348,7 @@ async function createCategory() {
 }
 
 function openCreateItem() {
+  clearImage()
   editingItem.value = null
   itemForm.value = {
     category_id: categories.value[0]?.id || '',
@@ -340,7 +363,9 @@ function openCreateItem() {
 }
 
 function openEditItem(item) {
+  clearImage()
   editingItem.value = item
+  imagePreview.value = item.image_url || ''
   itemForm.value = {
     category_id: item.category_id,
     name: item.name,
@@ -354,7 +379,7 @@ function openEditItem(item) {
 }
 
 async function saveItem() {
-  if (!itemForm.value.category_id || !itemForm.value.name || !itemForm.value.price) {
+  if (!itemForm.value.category_id || !itemForm.value.name.trim() || itemForm.value.price === '' || itemForm.value.price === null || Number(itemForm.value.price) < 0) {
     itemError.value = 'Category, name and price are required.'
     return
   }
@@ -362,17 +387,47 @@ async function saveItem() {
   itemError.value = ''
   try {
     if (editingItem.value) {
-      await menuItemsApi.update(editingItem.value.id, itemForm.value)
+      await menuItemsApi.update(editingItem.value.id, { ...itemForm.value, image: selectedImage.value })
     } else {
-      await menuItemsApi.create(itemForm.value)
+      await menuItemsApi.create({ ...itemForm.value, image: selectedImage.value })
     }
     showItemModal.value = false
+    clearImage()
     await fetchAll()
   } catch (e) {
-    itemError.value = e.response?.data?.message || 'Failed to save item.'
+    itemError.value = e.response?.data?.errors
+      ? Object.values(e.response.data.errors).flat().join(' ')
+      : e.response?.data?.message || 'Failed to save item.'
   } finally {
     itemLoading.value = false
   }
+}
+
+function selectImage(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+    itemError.value = 'Choose a JPEG, PNG or WebP image under 5 MB.'
+    event.target.value = ''
+    return
+  }
+  if (imagePreview.value.startsWith('blob:')) URL.revokeObjectURL(imagePreview.value)
+  selectedImage.value = file
+  imagePreview.value = URL.createObjectURL(file)
+  itemError.value = ''
+}
+
+function clearImage() {
+  if (imagePreview.value.startsWith('blob:')) URL.revokeObjectURL(imagePreview.value)
+  selectedImage.value = null
+  imagePreview.value = ''
+  if (imageInput.value) imageInput.value.value = ''
+}
+
+function closeItemModal() {
+  if (itemLoading.value) return
+  showItemModal.value = false
+  clearImage()
 }
 
 async function toggleAvailability(item) {
@@ -387,4 +442,5 @@ async function deleteItem(item) {
 }
 
 onMounted(fetchAll)
+onBeforeUnmount(clearImage)
 </script>

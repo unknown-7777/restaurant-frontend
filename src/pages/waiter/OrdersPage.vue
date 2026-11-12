@@ -1,9 +1,9 @@
 <template>
   <AppLayout>
-    <div class="p-6">
+    <div class="p-4 sm:p-6">
 
       <!-- Header -->
-      <div class="flex items-center justify-between mb-6">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
           <h1 class="text-2xl font-bold text-gray-900">Orders</h1>
           <p class="text-gray-500 text-sm mt-0.5">Manage and track all orders</p>
@@ -97,8 +97,8 @@
     </div>
 
     <!-- Create Order Modal -->
-    <div v-if="showCreateModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="bg-white rounded-2xl p-6 w-full max-w-lg shadow-xl max-h-[90vh] overflow-y-auto">
+    <div v-if="showCreateModal" class="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-3 overflow-y-auto">
+      <div class="bg-white rounded-2xl p-5 sm:p-6 w-full max-w-lg shadow-xl max-h-[calc(100dvh-1.5rem)] overflow-y-auto">
         <div class="flex items-center justify-between mb-4">
           <h2 class="text-lg font-bold text-gray-900">New Order</h2>
           <button @click="closeCreateModal" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
@@ -235,8 +235,8 @@
     </div>
 
     <!-- Order Detail Modal -->
-    <div v-if="selectedOrder" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto">
+    <div v-if="selectedOrder" class="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-3 overflow-y-auto">
+      <div class="bg-white rounded-2xl p-5 sm:p-6 w-full max-w-md shadow-xl max-h-[calc(100dvh-1.5rem)] overflow-y-auto">
         <div class="flex items-center justify-between mb-4">
           <div>
             <h2 class="text-lg font-bold text-gray-900">

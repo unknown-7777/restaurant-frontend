@@ -9,8 +9,21 @@ const routes = [
     meta: { guest: true },
   },
   {
+    path: '/users',
+    name: 'users',
+    component: () => import('../pages/admin/UsersPage.vue'),
+    meta: { requiresAuth: true, roles: ['admin'] },
+  },
+  {
     path: '/',
-    redirect: '/dashboard',
+    redirect: () => {
+      const auth = useAuthStore()
+      if (!auth.isAuthenticated) return '/login'
+      if (auth.user?.role === 'customer') return '/customer'
+      if (auth.user?.role === 'kitchen') return '/kitchen'
+      if (['admin', 'manager'].includes(auth.user?.role)) return '/dashboard'
+      return '/orders'
+    },
   },
   {
     path: '/dashboard',
@@ -52,6 +65,17 @@ const routes = [
     path: '/unauthorized',
     name: 'unauthorized',
     component: () => import('../pages/UnauthorizedPage.vue'),
+  },
+  {
+    path: '/customer',
+    name: 'customer',
+    component: () => import('../pages/customer/MenuPage.vue'),
+    meta: { requiresAuth: true, roles: ['customer'] },
+  },
+  {
+    path: '/order',
+    name: 'qr-order',
+    component: () => import('../pages/customer/MenuPage.vue'),
   },
 ]
 

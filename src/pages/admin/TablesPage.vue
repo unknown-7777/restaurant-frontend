@@ -1,5 +1,6 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import QRCode from 'qrcode'
 import AppLayout from '../../components/layout/AppLayout.vue'
 import { tablesApi } from '../../api/tables'
 
@@ -9,6 +10,9 @@ const showCreateModal = ref(false)
 const selectedTable = ref(null)
 const createLoading = ref(false)
 const createError = ref('')
+const qrCodeDataUrl = ref('')
+const qrGenerating = ref(false)
+let refreshTimer
 
 const createForm = ref({ number: '', capacity: 4 })
 
@@ -42,6 +46,10 @@ function statusTextClass(status) {
   }[status] || 'text-gray-600'
 }
 
+function tableStatusLabel(status) {
+  return status === 'available' ? 'Empty' : status.charAt(0).toUpperCase() + status.slice(1)
+}
+
 async function fetchTables() {
   loading.value = true
   try {
@@ -54,6 +62,7 @@ async function fetchTables() {
 
 function selectTable(table) {
   selectedTable.value = { ...table }
+  generateQrCode(selectedTable.value)
 }
 
 async function createTable() {
@@ -89,14 +98,48 @@ async function deleteTable(table) {
   await fetchTables()
 }
 
-onMounted(fetchTables)
+function qrLink(table) {
+  const frontendUrl = (import.meta.env.VITE_PUBLIC_URL || window.location.origin).replace(/\/$/, '')
+  return `${frontendUrl}/order?table=${encodeURIComponent(table.qr_code)}`
+}
+
+async function generateQrCode(table) {
+  qrGenerating.value = true
+  qrCodeDataUrl.value = ''
+  try {
+    qrCodeDataUrl.value = await QRCode.toDataURL(qrLink(table), {
+      width: 240,
+      margin: 2,
+      errorCorrectionLevel: 'M',
+    })
+  } finally {
+    qrGenerating.value = false
+  }
+}
+
+function printQrCode(table) {
+  const printWindow = window.open('', '_blank', 'width=480,height=560')
+  if (!printWindow || !qrCodeDataUrl.value) return
+  const title = `Table ${table.number} QR code`
+  const image = qrCodeDataUrl.value
+  const link = qrLink(table)
+  printWindow.document.write(`<!doctype html><html><head><title>${title}</title><style>body{font-family:Arial,sans-serif;text-align:center;padding:32px}img{width:300px;height:300px}p{word-break:break-all}</style></head><body><h1>${title}</h1><img src="${image}" alt="${title}"><p>${link}</p><script>window.onload=()=>window.print()<\/script></body></html>`)
+  printWindow.document.close()
+}
+
+onMounted(() => {
+  fetchTables()
+  refreshTimer = window.setInterval(fetchTables, 10000)
+})
+
+onUnmounted(() => window.clearInterval(refreshTimer))
 </script>
 
 <template>
   <AppLayout>
-    <div class="p-6">
+    <div class="p-4 sm:p-6">
 
-      <div class="flex items-center justify-between mb-6">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
           <h1 class="text-2xl font-bold text-gray-900">Tables</h1>
           <p class="text-gray-500 text-sm mt-0.5">Manage restaurant tables and status</p>
@@ -109,10 +152,10 @@ onMounted(fetchTables)
         </button>
       </div>
 
-      <div class="grid grid-cols-3 gap-4 mb-6">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
         <div class="bg-white rounded-xl border border-gray-200 p-4 text-center">
           <p class="text-2xl font-bold text-green-600">{{ counts.available }}</p>
-          <p class="text-sm text-gray-500 mt-0.5">Available</p>
+          <p class="text-sm text-gray-500 mt-0.5">Empty</p>
         </div>
         <div class="bg-white rounded-xl border border-gray-200 p-4 text-center">
           <p class="text-2xl font-bold text-red-500">{{ counts.occupied }}</p>
@@ -133,7 +176,7 @@ onMounted(fetchTables)
         <p class="text-gray-400 text-sm mt-1">Click "Add Table" to create your first table</p>
       </div>
 
-      <div v-else class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+      <div v-else class="grid grid-cols-1 min-[380px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
         <div
           v-for="table in tables"
           :key="table.id"
@@ -145,15 +188,15 @@ onMounted(fetchTables)
             <span class="text-2xl font-bold">{{ table.number }}</span>
             <span :class="dotClass(table.status)" class="w-3 h-3 rounded-full"></span>
           </div>
-          <p class="text-sm font-medium capitalize">{{ table.status }}</p>
+          <p class="text-sm font-medium">{{ tableStatusLabel(table.status) }}</p>
           <p class="text-xs text-gray-400 mt-0.5">{{ table.capacity }} seats</p>
         </div>
       </div>
 
     </div>
 
-    <div v-if="showCreateModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
+    <div v-if="showCreateModal" class="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-3 overflow-y-auto">
+      <div class="bg-white rounded-2xl p-5 sm:p-6 w-full max-w-sm shadow-xl max-h-[calc(100dvh-1.5rem)] overflow-y-auto">
         <h2 class="text-lg font-bold text-gray-900 mb-4">Add New Table</h2>
 
         <div class="space-y-4">
@@ -199,8 +242,8 @@ onMounted(fetchTables)
       </div>
     </div>
 
-    <div v-if="selectedTable" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
+    <div v-if="selectedTable" class="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-50 p-3 overflow-y-auto">
+      <div class="bg-white rounded-2xl p-5 sm:p-6 w-full max-w-sm shadow-xl max-h-[calc(100dvh-1.5rem)] overflow-y-auto">
         <div class="flex items-center justify-between mb-6">
           <h2 class="text-lg font-bold text-gray-900">Table {{ selectedTable.number }}</h2>
           <button @click="selectedTable = null" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
@@ -214,13 +257,33 @@ onMounted(fetchTables)
           <div class="flex justify-between text-sm">
             <span class="text-gray-500">Status</span>
             <span :class="statusTextClass(selectedTable.status)" class="font-medium capitalize">
-              {{ selectedTable.status }}
+              {{ tableStatusLabel(selectedTable.status) }}
             </span>
           </div>
           <div class="flex justify-between text-sm">
             <span class="text-gray-500">QR Code</span>
             <span class="font-mono text-xs text-gray-400">{{ selectedTable.qr_code?.slice(0, 16) }}...</span>
           </div>
+        </div>
+
+        <div class="border border-gray-200 rounded-xl p-4 mb-6 text-center">
+          <p class="text-sm font-semibold text-gray-800 mb-3">Scan to order at this table</p>
+          <img
+            v-if="qrCodeDataUrl"
+            :src="qrCodeDataUrl"
+            :alt="`QR code for table ${selectedTable.number}`"
+            class="w-48 h-48 mx-auto"
+          />
+          <p v-else-if="qrGenerating" class="h-48 flex items-center justify-center text-sm text-gray-400">Generating QR code…</p>
+          <p class="text-xs text-gray-400 mt-2 break-all">{{ qrLink(selectedTable) }}</p>
+          <button
+            type="button"
+            @click="printQrCode(selectedTable)"
+            :disabled="!qrCodeDataUrl"
+            class="mt-3 text-sm font-medium text-orange-600 hover:text-orange-700"
+          >
+            Print QR code
+          </button>
         </div>
 
         <div class="mb-6">
@@ -235,7 +298,7 @@ onMounted(fetchTables)
                 : 'border-gray-300 text-gray-600 hover:bg-gray-50'"
               class="border text-xs font-medium py-2 rounded-lg capitalize transition-colors"
             >
-              {{ status }}
+              {{ tableStatusLabel(status) }}
             </button>
           </div>
         </div>

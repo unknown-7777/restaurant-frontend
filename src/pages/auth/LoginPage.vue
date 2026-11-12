@@ -19,6 +19,8 @@ async function handleLogin() {
       router.push('/dashboard')
     } else if (user.role === 'kitchen') {
       router.push('/kitchen')
+    } else if (user.role === 'customer') {
+      router.push('/customer')
     } else {
       router.push('/orders')
     }
