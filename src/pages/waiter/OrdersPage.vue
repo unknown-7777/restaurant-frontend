@@ -21,7 +21,7 @@
       <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
           <h1 class="text-2xl font-bold text-gray-900">Orders</h1>
-          <p class="text-gray-500 text-sm mt-0.5">Manage and track all orders</p>
+          <p class="text-gray-500 text-sm mt-0.5">Confirm or cancel orders, serve ready orders, and process table bills</p>
         </div>
         <button
           @click="showCreateModal = true"
@@ -461,8 +461,8 @@ const statusTabs = [
 
 const transitions = {
   pending:   ['confirmed', 'cancelled'],
-  confirmed: ['preparing', 'cancelled'],
-  preparing: ['ready', 'cancelled'],
+  confirmed: ['cancelled'],
+  preparing: [],
   ready:     ['served'],
   served:    [],
   paid:      [],
