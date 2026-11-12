@@ -1,6 +1,5 @@
 const DEFAULT_REFRESH_INTERVAL = 5000
 
-/** Keep a screen current while it is open, and refresh promptly on tab return. */
 export function startLiveRefresh(refresh, interval = DEFAULT_REFRESH_INTERVAL) {
   let running = false
 
@@ -10,7 +9,6 @@ export function startLiveRefresh(refresh, interval = DEFAULT_REFRESH_INTERVAL) {
     try {
       await refresh()
     } catch {
-      // A transient API failure should not stop future refresh attempts.
     } finally {
       running = false
     }

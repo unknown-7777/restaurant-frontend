@@ -94,9 +94,10 @@
               <div class="flex gap-2">
                 <button
                   @click="toggleAvailability(item)"
+                  :disabled="togglingItemIds.has(item.id)"
                   class="text-xs text-gray-400 hover:text-orange-500 transition-colors"
                 >
-                  Toggle
+                  {{ togglingItemIds.has(item.id) ? 'Saving…' : 'Toggle' }}
                 </button>
                 <button
                   @click="openEditItem(item)"
@@ -285,6 +286,7 @@ import { menuItemsApi } from '../../api/menuItems'
 
 const categories = ref([])
 const items = ref([])
+const togglingItemIds = ref(new Set())
 const loading = ref(true)
 const selectedCategory = ref(null)
 
@@ -431,8 +433,22 @@ function closeItemModal() {
 }
 
 async function toggleAvailability(item) {
-  await menuItemsApi.update(item.id, { is_available: !item.is_available })
-  await fetchAll()
+  const previousValue = item.is_available
+  item.is_available = !previousValue
+  togglingItemIds.value = new Set(togglingItemIds.value).add(item.id)
+
+  try {
+    const response = await menuItemsApi.update(item.id, { is_available: item.is_available })
+    const updatedItem = response.data?.data
+    if (updatedItem) Object.assign(item, updatedItem)
+  } catch (error) {
+    item.is_available = previousValue
+    window.alert(error.response?.data?.message || 'Could not update menu item availability.')
+  } finally {
+    const pending = new Set(togglingItemIds.value)
+    pending.delete(item.id)
+    togglingItemIds.value = pending
+  }
 }
 
 async function deleteItem(item) {
