@@ -16,6 +16,21 @@
         </button>
       </div>
 
+      <!-- Account status filter -->
+      <div class="flex gap-2 mb-4 overflow-x-auto pb-1">
+        <button
+          v-for="tab in activityTabs"
+          :key="tab.value"
+          @click="selectedActivity = tab.value"
+          :class="selectedActivity === tab.value
+            ? 'bg-gray-800 text-white'
+            : 'bg-white border border-gray-300 text-gray-600 hover:bg-gray-50'"
+          class="px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors"
+        >
+          {{ tab.label }}
+        </button>
+      </div>
+
       <!-- Role filter -->
       <div class="flex gap-2 mb-6 overflow-x-auto pb-1">
         <button
@@ -257,6 +272,7 @@ import { usersApi } from '../../api/users'
 const users = ref([])
 const loading = ref(true)
 const selectedRole = ref('all')
+const selectedActivity = ref('active')
 const search = ref('')
 const page = ref(1)
 const meta = ref({ total: 0, last_page: 1 })
@@ -277,6 +293,12 @@ const roleTabs = [
   { label: 'Cashier', value: 'cashier' },
   { label: 'Kitchen', value: 'kitchen' },
   { label: 'Customer', value: 'customer' },
+]
+
+const activityTabs = [
+  { label: 'Active Users', value: 'active' },
+  { label: 'Inactive Users', value: 'inactive' },
+  { label: 'All Users', value: 'all' },
 ]
 
 function roleClass(role) {
@@ -301,6 +323,7 @@ async function fetchUsers() {
   try {
     const params = { page: page.value, per_page: 20 }
     if (selectedRole.value !== 'all') params.role = selectedRole.value
+    if (selectedActivity.value !== 'all') params.is_active = selectedActivity.value === 'active'
     if (search.value) params.search = search.value
     const response = await usersApi.list(params)
     users.value = response.data.data.users
@@ -385,7 +408,7 @@ async function deleteUser(user) {
   }
 }
 
-watch([selectedRole, search], () => {
+watch([selectedActivity, selectedRole, search], () => {
   page.value = 1
   fetchUsers()
 })

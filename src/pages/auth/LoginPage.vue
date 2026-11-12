@@ -38,7 +38,7 @@ async function handleLogin() {
 
       <div class="text-center mb-8">
         <h1 class="text-2xl font-bold text-gray-900">Restaurant System</h1>
-        <p class="text-gray-500 mt-1">Sign in to your account</p>
+        <p class="text-gray-500 mt-1">Staff sign in here. Customers can scan a table QR code to order without an account.</p>
       </div>
 
       <form @submit.prevent="handleLogin" class="space-y-4">

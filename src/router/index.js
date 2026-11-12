@@ -15,6 +15,12 @@ const routes = [
     meta: { requiresAuth: true, roles: ['admin'] },
   },
   {
+    path: '/feedback',
+    name: 'feedback',
+    component: () => import('../pages/admin/FeedbackPage.vue'),
+    meta: { requiresAuth: true, roles: ['admin', 'manager'] },
+  },
+  {
     path: '/',
     redirect: () => {
       const auth = useAuthStore()

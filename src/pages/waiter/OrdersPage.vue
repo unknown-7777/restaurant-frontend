@@ -2,6 +2,21 @@
   <AppLayout>
     <div class="p-4 sm:p-6">
 
+      <div v-if="paymentNotification" class="fixed bottom-4 left-4 right-4 sm:left-auto sm:w-96 z-[60] rounded-xl border border-green-300 bg-white p-4 shadow-xl">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <p class="font-semibold text-gray-900">Customer requested the bill</p>
+            <p class="mt-1 text-sm text-gray-600">
+              Table {{ paymentNotification.number ?? 'N/A' }} · {{ paymentNotification.bill_requested_method?.toUpperCase() }}
+            </p>
+          </div>
+          <button @click="paymentNotification = null" class="text-gray-400 hover:text-gray-700" aria-label="Dismiss">✕</button>
+        </div>
+        <button @click="openTableBill(paymentNotification); paymentNotification = null" class="mt-3 w-full rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700">
+          Review one table bill
+        </button>
+      </div>
+
       <!-- Header -->
       <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
@@ -74,6 +89,10 @@
               <StatusBadge :status="order.status" />
             </div>
           </div>
+          <span v-if="hasTableBillRequest(order.table_id)" class="mt-2 inline-flex rounded-full bg-green-100 px-2 py-1 text-xs font-semibold text-green-700">
+            Table bill requested · {{ getTable(order.table_id)?.bill_requested_method?.toUpperCase() }}
+            <button @click.stop="openTableBill(getTable(order.table_id))" class="ml-2 underline">Process</button>
+          </span>
 
           <!-- Items preview -->
           <div v-if="order.items?.length" class="mt-3 flex flex-wrap gap-1">
@@ -284,6 +303,16 @@
           <p class="text-xs text-yellow-700">📝 {{ selectedOrder.notes }}</p>
         </div>
 
+        <div v-if="hasTableBillRequest(selectedOrder.table_id) && selectedOrder.user_id === null && !selectedOrder.payment" class="mb-4 rounded-lg border border-green-200 bg-green-50 p-3">
+          <p class="text-sm font-semibold text-green-800">Customer requested one bill for the table</p>
+          <p class="mt-1 text-xs text-green-700">Requested method: {{ getTable(selectedOrder.table_id)?.bill_requested_method?.toUpperCase() }}</p>
+          <button @click="openTableBill(getTable(selectedOrder.table_id))" class="mt-2 text-sm font-semibold text-green-800 underline">Review table bill</button>
+        </div>
+
+        <div v-if="selectedOrder.status === 'served' && !selectedOrder.payment && selectedOrder.user_id === null && !hasTableBillRequest(selectedOrder.table_id)" class="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          Waiting for the customer to request one bill for the table.
+        </div>
+
         <!-- Status actions -->
         <div class="mb-4">
           <h3 class="text-sm font-medium text-gray-700 mb-2">Update Status</h3>
@@ -299,13 +328,13 @@
             </button>
           </div>
           <p v-if="nextStatuses(selectedOrder.status).length === 0" class="text-gray-400 text-sm">
-            No further actions available.
+            {{ selectedOrder.status === 'served' && !selectedOrder.payment ? 'Use the table bill when the customer requests payment.' : 'No further status updates available.' }}
           </p>
         </div>
 
         <!-- Payment -->
         <div
-          v-if="selectedOrder.status === 'served' && !selectedOrder.payment"
+          v-if="selectedOrder.status === 'served' && !selectedOrder.payment && selectedOrder.user_id !== null && !hasTableBillRequest(selectedOrder.table_id)"
           class="border-t border-gray-200 pt-4"
         >
           <h3 class="text-sm font-medium text-gray-700 mb-3">Process Payment</h3>
@@ -352,11 +381,45 @@
       </div>
     </div>
 
+    <!-- Consolidated customer bill -->
+    <div v-if="selectedTableBill" class="fixed inset-0 bg-black/50 flex items-start sm:items-center justify-center z-[55] p-3 overflow-y-auto">
+      <div class="bg-white rounded-2xl p-5 sm:p-6 w-full max-w-md shadow-xl max-h-[calc(100dvh-1.5rem)] overflow-y-auto">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Table {{ selectedTableBill.number }} bill</h2>
+            <p class="text-sm text-gray-500">{{ tableBillOrders.length }} served orders on one bill</p>
+          </div>
+          <button @click="selectedTableBill = null" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+        </div>
+        <div class="space-y-2 border-b border-gray-200 pb-3">
+          <div v-for="order in tableBillOrders" :key="order.id" class="flex justify-between text-sm">
+            <span>Order #{{ order.id.slice(0, 8) }}</span>
+            <span>${{ Number(order.total_amount).toFixed(2) }}</span>
+          </div>
+          <div class="flex justify-between pt-2 font-bold">
+            <span>Total due</span><span>${{ tableBillTotal.toFixed(2) }}</span>
+          </div>
+        </div>
+        <div class="mt-4 space-y-3">
+          <label class="block text-sm font-medium text-gray-700">Payment method</label>
+          <select v-model="paymentForm.method" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+            <option value="cash">Cash</option><option value="card">Card</option><option value="qris">QRIS</option>
+          </select>
+          <input v-model.number="paymentForm.amount" type="number" min="0" step="0.01" :placeholder="`Amount (min $${tableBillTotal.toFixed(2)})`" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+          <p v-if="paymentForm.amount > tableBillTotal" class="text-sm text-green-600">Change: ${{ (paymentForm.amount - tableBillTotal).toFixed(2) }}</p>
+          <p v-if="tableBillError" class="text-sm text-red-600">{{ tableBillError }}</p>
+          <button @click="processTableBill" :disabled="paymentLoading || !tableBillOrders.length" class="w-full rounded-lg bg-green-600 py-2 text-sm font-semibold text-white disabled:opacity-50">
+            {{ paymentLoading ? 'Processing…' : 'Process table payment' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
   </AppLayout>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import AppLayout from '../../components/layout/AppLayout.vue'
 import StatusBadge from '../../components/shared/StatusBadge.vue'
 import { ordersApi } from '../../api/orders'
@@ -371,7 +434,9 @@ const menuItems = ref([])
 const loading = ref(true)
 const selectedStatus = ref('all')
 const selectedOrder = ref(null)
+const selectedTableBill = ref(null)
 const itemCategory = ref(null)
+const paymentNotification = ref(null)
 
 const showCreateModal = ref(false)
 const createLoading = ref(false)
@@ -380,6 +445,8 @@ const createForm = ref({ table_id: '', notes: '', items: [] })
 
 const paymentLoading = ref(false)
 const paymentForm = ref({ method: 'cash', amount: '' })
+const tableBillError = ref('')
+let orderRefreshTimer
 
 const statusTabs = [
   { label: 'All', value: 'all' },
@@ -397,7 +464,7 @@ const transitions = {
   confirmed: ['preparing', 'cancelled'],
   preparing: ['ready', 'cancelled'],
   ready:     ['served'],
-  served:    ['paid'],
+  served:    [],
   paid:      [],
   cancelled: [],
 }
@@ -411,6 +478,11 @@ const availableTables = computed(() =>
   tables.value.filter(t => t.status === 'available')
 )
 
+const tableBillOrders = computed(() => selectedTableBill.value
+  ? orders.value.filter(order => order.table_id === selectedTableBill.value.id && order.status === 'served' && !order.payment)
+  : [])
+const tableBillTotal = computed(() => tableBillOrders.value.reduce((sum, order) => sum + Number(order.total_amount), 0))
+
 const filteredMenuItems = computed(() => {
   if (!itemCategory.value) return menuItems.value
   return menuItems.value.filter(i => i.category_id === itemCategory.value)
@@ -423,6 +495,14 @@ const orderTotal = computed(() =>
 function countByStatus(status) {
   if (status === 'all') return orders.value.length
   return orders.value.filter(o => o.status === status).length
+}
+
+function getTable(tableId) {
+  return tables.value.find(table => table.id === tableId)
+}
+
+function hasTableBillRequest(tableId) {
+  return !!getTable(tableId)?.bill_requested_at
 }
 
 function nextStatuses(status) {
@@ -499,6 +579,31 @@ async function fetchAll() {
   }
 }
 
+async function refreshOrderRows() {
+  try {
+    const [ordersResponse, tablesResponse] = await Promise.all([
+      ordersApi.list({ per_page: 100 }),
+      tablesApi.list(),
+    ])
+    const refreshedOrders = ordersResponse.data.data.orders
+    const refreshedTables = tablesResponse.data.data
+    const previouslyRequested = new Set(
+      tables.value.filter(table => table.bill_requested_at).map(table => table.id)
+    )
+    paymentNotification.value = refreshedTables.find(table =>
+      table.bill_requested_at && !previouslyRequested.has(table.id)
+    ) || paymentNotification.value
+    orders.value = refreshedOrders
+    tables.value = refreshedTables
+    if (selectedOrder.value) {
+      const detail = await ordersApi.get(selectedOrder.value.id)
+      selectedOrder.value = detail.data.data
+    }
+  } catch {
+    // Keep the current list visible if a periodic refresh briefly fails.
+  }
+}
+
 async function submitOrder() {
   if (createForm.value.items.length === 0) {
     createError.value = 'Add at least one item.'
@@ -528,7 +633,24 @@ async function submitOrder() {
 async function openOrder(order) {
   const response = await ordersApi.get(order.id)
   selectedOrder.value = response.data.data
-  paymentForm.value = { method: 'cash', amount: '' }
+  paymentForm.value = {
+    method: 'cash',
+    amount: Number(selectedOrder.value.total_amount),
+  }
+}
+
+function openTableBill(table) {
+  if (!table) return
+  selectedOrder.value = null
+  selectedTableBill.value = table
+  tableBillError.value = ''
+  paymentForm.value = {
+    method: table.bill_requested_method || 'cash',
+    amount: Number(orders.value
+      .filter(order => order.table_id === table.id && order.status === 'served' && !order.payment)
+      .reduce((sum, order) => sum + Number(order.total_amount), 0)
+      .toFixed(2)),
+  }
 }
 
 async function updateOrderStatus(id, status) {
@@ -553,5 +675,25 @@ async function processPayment() {
   }
 }
 
-onMounted(fetchAll)
+async function processTableBill() {
+  if (!selectedTableBill.value || !paymentForm.value.amount || paymentLoading.value) return
+  paymentLoading.value = true
+  tableBillError.value = ''
+  try {
+    await ordersApi.payTable(selectedTableBill.value.id, paymentForm.value)
+    selectedTableBill.value = null
+    await fetchAll()
+  } catch (error) {
+    tableBillError.value = error.response?.data?.message || 'Could not process the table payment.'
+  } finally {
+    paymentLoading.value = false
+  }
+}
+
+onMounted(async () => {
+  await fetchAll()
+  orderRefreshTimer = window.setInterval(refreshOrderRows, 7000)
+})
+
+onUnmounted(() => window.clearInterval(orderRefreshTimer))
 </script>
