@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import QRCode from 'qrcode'
 import AppLayout from '../../components/layout/AppLayout.vue'
 import { tablesApi } from '../../api/tables'
+import { startLiveRefresh } from '../../utils/liveRefresh'
 
 const tables = ref([])
 const loading = ref(true)
@@ -12,7 +13,7 @@ const createLoading = ref(false)
 const createError = ref('')
 const qrCodeDataUrl = ref('')
 const qrGenerating = ref(false)
-let refreshTimer
+let stopLiveRefresh
 
 const createForm = ref({ number: '', capacity: 4 })
 
@@ -50,13 +51,13 @@ function tableStatusLabel(status) {
   return status === 'available' ? 'Empty' : status.charAt(0).toUpperCase() + status.slice(1)
 }
 
-async function fetchTables() {
-  loading.value = true
+async function fetchTables(silent = false) {
+  if (!silent) loading.value = true
   try {
     const response = await tablesApi.list()
     tables.value = response.data.data
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
@@ -129,10 +130,10 @@ function printQrCode(table) {
 
 onMounted(() => {
   fetchTables()
-  refreshTimer = window.setInterval(fetchTables, 10000)
+  stopLiveRefresh = startLiveRefresh(() => fetchTables(true))
 })
 
-onUnmounted(() => window.clearInterval(refreshTimer))
+onUnmounted(() => stopLiveRefresh?.())
 </script>
 
 <template>

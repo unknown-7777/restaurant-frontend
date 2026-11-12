@@ -272,6 +272,7 @@ import { categoriesApi } from '../../api/categories'
 import { menuItemsApi } from '../../api/menuItems'
 import { ordersApi } from '../../api/orders'
 import { tablesApi } from '../../api/tables'
+import { startLiveRefresh } from '../../utils/liveRefresh'
 
 const auth = useAuthStore()
 const cart = useCartStore()
@@ -297,7 +298,7 @@ const feedbackRating = ref(0)
 const feedbackComment = ref('')
 const feedbackLoading = ref(false)
 const feedbackSubmitted = ref(false)
-let orderRefreshTimer
+let stopLiveRefresh
 
 const tableQrCode = computed(() => typeof route.query.table === 'string' ? route.query.table : '')
 
@@ -473,7 +474,7 @@ onMounted(async () => {
       const response = await tablesApi.getByQrCode(tableQrCode.value)
       tableInfo.value = response.data.data
       await refreshQrOrders()
-      orderRefreshTimer = window.setInterval(refreshQrOrders, 15000)
+      stopLiveRefresh = startLiveRefresh(refreshQrOrders)
     } catch (error) {
       if (error.response?.status === 404) {
         tableError.value = 'This table QR code is invalid. Please ask a staff member for help.'
@@ -488,5 +489,5 @@ onMounted(async () => {
   }
 })
 
-onUnmounted(() => window.clearInterval(orderRefreshTimer))
+onUnmounted(() => stopLiveRefresh?.())
 </script>

@@ -426,6 +426,7 @@ import { ordersApi } from '../../api/orders'
 import { tablesApi } from '../../api/tables'
 import { categoriesApi } from '../../api/categories'
 import { menuItemsApi } from '../../api/menuItems'
+import { startLiveRefresh } from '../../utils/liveRefresh'
 
 const orders = ref([])
 const tables = ref([])
@@ -446,7 +447,7 @@ const createForm = ref({ table_id: '', notes: '', items: [] })
 const paymentLoading = ref(false)
 const paymentForm = ref({ method: 'cash', amount: '' })
 const tableBillError = ref('')
-let orderRefreshTimer
+let stopLiveRefresh
 
 const statusTabs = [
   { label: 'All', value: 'all' },
@@ -692,8 +693,8 @@ async function processTableBill() {
 
 onMounted(async () => {
   await fetchAll()
-  orderRefreshTimer = window.setInterval(refreshOrderRows, 7000)
+  stopLiveRefresh = startLiveRefresh(refreshOrderRows)
 })
 
-onUnmounted(() => window.clearInterval(orderRefreshTimer))
+onUnmounted(() => stopLiveRefresh?.())
 </script>

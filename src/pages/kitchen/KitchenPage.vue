@@ -172,6 +172,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
 import { ordersApi } from '../../api/orders'
+import { startLiveRefresh } from '../../utils/liveRefresh'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -181,7 +182,7 @@ const loading = ref(true)
 const isConnected = ref(true)
 const currentTime = ref('')
 const currentDate = ref('')
-let refreshInterval = null
+let stopLiveRefresh = null
 let clockInterval = null
 
 const confirmedCount = computed(() =>
@@ -247,12 +248,12 @@ async function handleLogout() {
 onMounted(() => {
   fetchOrders()
   updateClock()
-  refreshInterval = setInterval(fetchOrders, 10000)
+  stopLiveRefresh = startLiveRefresh(fetchOrders)
   clockInterval = setInterval(updateClock, 1000)
 })
 
 onUnmounted(() => {
-  clearInterval(refreshInterval)
+  stopLiveRefresh?.()
   clearInterval(clockInterval)
 })
 </script>
