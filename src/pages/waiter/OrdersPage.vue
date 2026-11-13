@@ -401,15 +401,20 @@
           </div>
         </div>
         <div class="mt-4 space-y-3">
-          <label class="block text-sm font-medium text-gray-700">Payment method</label>
-          <select v-model="paymentForm.method" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
-            <option value="cash">Cash</option><option value="card">Card</option><option value="qris">QRIS</option>
-          </select>
-          <input v-model.number="paymentForm.amount" type="number" min="0" step="0.01" :placeholder="`Amount (min $${tableBillTotal.toFixed(2)})`" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
-          <p v-if="paymentForm.amount > tableBillTotal" class="text-sm text-green-600">Change: ${{ (paymentForm.amount - tableBillTotal).toFixed(2) }}</p>
+          <div class="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">
+            Customer selected: <span class="font-semibold">{{ selectedTableBill.bill_requested_method?.toUpperCase() }}</span>
+          </div>
+          <template v-if="selectedTableBill.bill_requested_method === 'cash'">
+            <label class="block text-sm font-medium text-gray-700" for="cash-tendered">Cash received</label>
+            <input id="cash-tendered" v-model.number="paymentForm.amount" type="number" min="0" step="0.01" :placeholder="`At least $${tableBillTotal.toFixed(2)}`" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+            <p v-if="paymentForm.amount > tableBillTotal" class="text-sm text-green-600">Change to give: ${{ (paymentForm.amount - tableBillTotal).toFixed(2) }}</p>
+          </template>
+          <p v-else class="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
+            Complete the {{ selectedTableBill.bill_requested_method?.toUpperCase() }} payment on the payment terminal or QR. After it succeeds, confirm it here. The bill amount is recorded automatically.
+          </p>
           <p v-if="tableBillError" class="text-sm text-red-600">{{ tableBillError }}</p>
-          <button @click="processTableBill" :disabled="paymentLoading || !tableBillOrders.length" class="w-full rounded-lg bg-green-600 py-2 text-sm font-semibold text-white disabled:opacity-50">
-            {{ paymentLoading ? 'Processing…' : 'Process table payment' }}
+          <button @click="processTableBill" :disabled="paymentLoading || !tableBillOrders.length || (selectedTableBill.bill_requested_method === 'cash' && !(paymentForm.amount > 0))" class="w-full rounded-lg bg-green-600 py-2 text-sm font-semibold text-white disabled:opacity-50">
+            {{ paymentLoading ? 'Processing…' : (selectedTableBill.bill_requested_method === 'cash' ? 'Confirm cash payment' : 'Confirm payment received') }}
           </button>
         </div>
       </div>
@@ -677,11 +682,14 @@ async function processPayment() {
 }
 
 async function processTableBill() {
-  if (!selectedTableBill.value || !paymentForm.value.amount || paymentLoading.value) return
+  if (!selectedTableBill.value || paymentLoading.value) return
+  const method = selectedTableBill.value.bill_requested_method || 'cash'
+  const amount = method === 'cash' ? Number(paymentForm.value.amount) : tableBillTotal.value
+  if (!amount || (method === 'cash' && amount < tableBillTotal.value)) return
   paymentLoading.value = true
   tableBillError.value = ''
   try {
-    await ordersApi.payTable(selectedTableBill.value.id, paymentForm.value)
+    await ordersApi.payTable(selectedTableBill.value.id, { method, amount })
     selectedTableBill.value = null
     await fetchAll()
   } catch (error) {

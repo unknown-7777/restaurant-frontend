@@ -31,7 +31,19 @@
       </div>
     </div>
 
-    <div class="max-w-3xl mx-auto px-4 py-6">
+    <div v-if="tableQrCode && qrAccessBlocked" class="max-w-3xl mx-auto px-4 py-12">
+      <div class="rounded-xl border border-amber-200 bg-amber-50 p-5 text-center text-amber-900">
+        <h2 class="font-bold">This table cannot be opened right now</h2>
+        <p class="mt-2 text-sm">{{ qrAccessMessage }}</p>
+      </div>
+    </div>
+    <div v-else-if="tableQrCode && guestSessionClosed" class="max-w-3xl mx-auto px-4 py-12">
+      <div class="rounded-xl border border-gray-200 bg-white p-5 text-center text-gray-700 shadow-sm">
+        <h2 class="font-bold">This ordering visit has ended</h2>
+        <p class="mt-2 text-sm">To start a new visit, scan the table QR code again.</p>
+      </div>
+    </div>
+    <div v-else class="max-w-3xl mx-auto px-4 py-6">
       <div v-if="tableError" class="mb-5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
         {{ tableError }}
       </div>
@@ -41,6 +53,13 @@
       <div v-if="orderSuccessMessage" class="mb-5 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">
         {{ orderSuccessMessage }}
       </div>
+      <section v-if="canFinishVisit" class="mb-6 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+        <h2 class="font-semibold text-gray-900">Leaving without ordering?</h2>
+        <p class="mt-1 text-sm text-gray-600">Finish this visit to make the table available again.</p>
+        <button @click="finishVisit" :disabled="finishVisitLoading" class="mt-3 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 disabled:opacity-50">
+          {{ finishVisitLoading ? 'Finishing…' : 'Finish visit' }}
+        </button>
+      </section>
 
       <section v-if="customerOrders.length" class="mb-6 space-y-3">
         <article v-for="order in customerOrders" :key="order.id" class="rounded-xl border border-orange-200 bg-white p-4 shadow-sm">
@@ -54,6 +73,7 @@
           <p class="mt-3 text-sm text-gray-600">
             <template v-if="order.payment">Payment received. Thank you!</template>
             <template v-else-if="order.status === 'served'">Your order has been served. Request the bill when you are ready to pay.</template>
+            <template v-else-if="order.status === 'pending'">Your order is waiting for staff confirmation. The kitchen will start after a waiter confirms it.</template>
             <template v-else>Your order is with the restaurant. This status updates automatically.</template>
           </p>
           <p v-if="order.payment" class="mt-3 text-sm font-medium text-green-700">
@@ -62,14 +82,14 @@
         </article>
       </section>
 
-      <section v-if="customerOrders.length && !allCustomerOrdersPaid" class="mb-6 rounded-xl border border-green-200 bg-white p-4 shadow-sm">
+      <section v-if="billableCustomerOrders.length && !allCustomerOrdersPaid" class="mb-6 rounded-xl border border-green-200 bg-white p-4 shadow-sm">
         <h2 class="font-bold text-gray-900">One bill for your table</h2>
         <p class="mt-1 text-sm text-gray-600">
           {{ tableInfo?.bill_requested_at
             ? 'Bill requested. Staff will collect or process your selected payment method.'
             : canRequestBill
               ? `All served orders · $${tableBillTotal.toFixed(2)}`
-              : 'You can request one bill after all your orders have been served.' }}
+              : 'You can request one bill after all unpaid table orders have been served.' }}
         </p>
         <div v-if="canRequestBill && !tableInfo?.bill_requested_at" class="mt-3 flex flex-col gap-2 sm:flex-row">
           <select v-model="paymentMethod" class="rounded-lg border border-gray-300 px-3 py-2 text-sm">
@@ -190,7 +210,7 @@
     </div>
 
     <!-- Cart drawer -->
-    <div v-if="showCart" class="fixed inset-0 z-50 flex justify-end">
+    <div v-if="showCart && !qrAccessBlocked && !guestSessionClosed" class="fixed inset-0 z-50 flex justify-end">
       <div class="absolute inset-0 bg-black/50" @click="showCart = false"></div>
       <div class="relative bg-white w-full max-w-md h-full flex flex-col shadow-xl">
 
@@ -251,7 +271,7 @@
 
           <button
             @click="placeOrder"
-            :disabled="orderLoading || cart.items.length === 0 || (!auth.isAuthenticated && !tableQrCode) || !!tableError || !!tableInfo?.bill_requested_at"
+            :disabled="orderLoading || cart.items.length === 0 || (!auth.isAuthenticated && !tableQrCode) || !!tableError || !!tableInfo?.bill_requested_at || guestSessionClosed || (!!tableQrCode && !guestSessionToken)"
             class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-xl transition-colors disabled:opacity-50"
           >
             {{ orderLoading ? 'Sending order...' : (tableQrCode && customerOrders.length ? 'Place another order' : 'Place order') }}
@@ -290,6 +310,11 @@ const orderError = ref('')
 const orderSuccessMessage = ref('')
 const tableInfo = ref(null)
 const tableError = ref('')
+const guestSessionToken = ref('')
+const guestSessionClosed = ref(false)
+const qrAccessBlocked = ref(false)
+const qrAccessMessage = ref('Only the customer who started this visit can order from it. Please ask a staff member if you need help.')
+const finishVisitLoading = ref(false)
 const customerOrders = ref([])
 const paymentMethod = ref('cash')
 const billRequestLoading = ref(false)
@@ -303,12 +328,22 @@ let stopLiveRefresh
 const tableQrCode = computed(() => typeof route.query.table === 'string' ? route.query.table : '')
 
 const cartCount = computed(() => cart.itemCount)
-const allCustomerOrdersPaid = computed(() => customerOrders.value.length > 0 && customerOrders.value.every(order => !!order.payment))
-const canRequestBill = computed(() => customerOrders.value.some(order => !order.payment)
-  && customerOrders.value.every(order => order.payment || order.status === 'served')
+const billableCustomerOrders = computed(() => customerOrders.value.filter(order => order.status !== 'cancelled'))
+const unpaidBillOrders = computed(() => billableCustomerOrders.value.filter(order => !order.payment))
+const canFinishVisit = computed(() => !!tableQrCode.value
+  && !!guestSessionToken.value
+  && !guestSessionClosed.value
+  && unpaidBillOrders.value.length === 0
+  && !tableInfo.value?.bill_requested_at)
+const allCustomerOrdersPaid = computed(() => billableCustomerOrders.value.length > 0
+  && billableCustomerOrders.value.every(order => !!order.payment))
+const feedbackOrder = computed(() => billableCustomerOrders.value.find(order => !!order.payment) || null)
+const canRequestBill = computed(() => unpaidBillOrders.value.length > 0
+  && unpaidBillOrders.value.every(order => order.status === 'served')
+  && tableInfo.value?.bill_ready !== false
   && !tableInfo.value?.bill_requested_at)
 const tableBillTotal = computed(() => Number(tableInfo.value?.bill_total
-  ?? customerOrders.value.filter(order => !order.payment).reduce((sum, order) => sum + Number(order.total_amount), 0)))
+  ?? unpaidBillOrders.value.reduce((sum, order) => sum + Number(order.total_amount), 0)))
 
 const filteredItems = computed(() => {
   if (!selectedCategory.value) return menuItems.value
@@ -336,6 +371,10 @@ function decreaseItem(menuItem) {
 
 async function placeOrder() {
   if (cart.items.length === 0 || orderLoading.value) return
+  if (tableQrCode.value && (!guestSessionToken.value || guestSessionClosed.value)) {
+    orderError.value = 'This ordering visit has ended. Scan the table QR code again to start a new visit.'
+    return
+  }
   orderLoading.value = true
   orderError.value = ''
   orderSuccessMessage.value = ''
@@ -349,7 +388,11 @@ async function placeOrder() {
       })),
     }
     if (tableQrCode.value) {
-      const response = await ordersApi.createFromQr({ ...orderData, table_qr_code: tableQrCode.value })
+      const response = await ordersApi.createFromQr({
+        ...orderData,
+        table_qr_code: tableQrCode.value,
+        guest_session_token: guestSessionToken.value,
+      })
       const createdOrder = response.data.data
       customerOrders.value = [createdOrder, ...customerOrders.value.filter(order => order.id !== createdOrder.id)]
       const orderIds = readStoredOrderIds().filter(id => id !== createdOrder.id)
@@ -361,17 +404,48 @@ async function placeOrder() {
     orderNotes.value = ''
     showCart.value = false
     orderSuccessMessage.value = tableQrCode.value
-      ? 'Order sent. Add more items whenever you are ready; each round is tracked separately above.'
+      ? 'Order sent for staff confirmation. Add more items whenever you are ready; each round is tracked separately above.'
       : 'Order sent successfully.'
   } catch (e) {
+    if (e.response?.status === 410) {
+      guestSessionClosed.value = true
+      showCart.value = false
+    }
     orderError.value = e.response?.data?.message || 'Failed to place order.'
   } finally {
     orderLoading.value = false
   }
 }
 
+async function finishVisit() {
+  if (!canFinishVisit.value || finishVisitLoading.value) return
+  finishVisitLoading.value = true
+  orderError.value = ''
+  try {
+    await tablesApi.finishGuestSession({
+      table_qr_code: tableQrCode.value,
+      guest_session_token: guestSessionToken.value,
+    })
+    guestSessionClosed.value = true
+    showCart.value = false
+    cart.clearCart()
+  } catch (error) {
+    if (error.response?.status === 410) {
+      guestSessionClosed.value = true
+      showCart.value = false
+    }
+    orderError.value = error.response?.data?.message || 'Could not finish this visit. Please ask a staff member.'
+  } finally {
+    finishVisitLoading.value = false
+  }
+}
+
 function orderStorageKey() {
   return `qr-order:${tableQrCode.value}`
+}
+
+function guestSessionStorageKey() {
+  return `qr-guest-session:${tableQrCode.value}`
 }
 
 function readStoredOrderIds() {
@@ -392,16 +466,18 @@ async function refreshQrOrders() {
   refreshingOrders.value = true
   try {
     const [ordersResponse, tableResponse] = await Promise.all([
-      ordersApi.getManyFromQr(orderIds, tableQrCode.value),
+      ordersApi.getManyFromQr(orderIds, tableQrCode.value, guestSessionToken.value),
       tablesApi.getByQrCode(tableQrCode.value),
     ])
-    customerOrders.value = ordersResponse.data.data
+    customerOrders.value = ordersResponse.data.data.orders
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    guestSessionClosed.value = !ordersResponse.data.data.session_active
+    if (guestSessionClosed.value) showCart.value = false
     tableInfo.value = tableResponse.data.data
     const returnedIds = new Set(customerOrders.value.map(order => order.id))
     sessionStorage.setItem(orderStorageKey(), JSON.stringify(orderIds.filter(id => returnedIds.has(id))))
-    feedbackSubmitted.value = customerOrders.value[0]
-      ? sessionStorage.getItem(feedbackStorageKey(customerOrders.value[0].id)) === 'submitted'
+    feedbackSubmitted.value = feedbackOrder.value
+      ? sessionStorage.getItem(feedbackStorageKey(feedbackOrder.value.id)) === 'submitted'
       : false
   } finally {
     refreshingOrders.value = false
@@ -415,10 +491,15 @@ async function requestTableBill() {
   try {
     const response = await tablesApi.requestBillByQr({
       table_qr_code: tableQrCode.value,
+      guest_session_token: guestSessionToken.value,
       method: paymentMethod.value,
     })
     tableInfo.value = response.data.data
   } catch (error) {
+    if (error.response?.status === 410) {
+      guestSessionClosed.value = true
+      showCart.value = false
+    }
     orderError.value = error.response?.data?.message || 'Could not request the table bill. Please ask a staff member.'
   } finally {
     billRequestLoading.value = false
@@ -430,10 +511,10 @@ function feedbackStorageKey(orderId) {
 }
 
 async function submitFeedback() {
-  if (!feedbackRating.value || !customerOrders.value[0] || feedbackLoading.value) return
+  if (!feedbackRating.value || !feedbackOrder.value || feedbackLoading.value) return
   feedbackLoading.value = true
   orderError.value = ''
-  const orderId = customerOrders.value[0].id
+  const orderId = feedbackOrder.value.id
   try {
     await ordersApi.sendFeedbackFromQr(orderId, {
       table_qr_code: tableQrCode.value,
@@ -457,6 +538,40 @@ async function handleLogout() {
 onMounted(async () => {
   loading.value = true
   try {
+    if (tableQrCode.value) {
+      const tableResponse = await tablesApi.getByQrCode(tableQrCode.value)
+      tableInfo.value = tableResponse.data.data
+
+      let storedSessionToken = sessionStorage.getItem(guestSessionStorageKey())
+      const navigationType = performance.getEntriesByType('navigation')[0]?.type
+      if (storedSessionToken) {
+        try {
+          const sessionResponse = await tablesApi.startGuestSession({
+            table_qr_code: tableQrCode.value,
+            guest_session_token: storedSessionToken,
+          })
+          guestSessionToken.value = sessionResponse.data.data.token
+        } catch (error) {
+          if (error.response?.status === 410 && navigationType === 'navigate') {
+            sessionStorage.removeItem(guestSessionStorageKey())
+            storedSessionToken = null
+          } else if (error.response?.status === 410) {
+            guestSessionClosed.value = true
+            showCart.value = false
+            return
+          } else {
+            throw error
+          }
+        }
+      }
+
+      if (!storedSessionToken) {
+        const sessionResponse = await tablesApi.startGuestSession({ table_qr_code: tableQrCode.value })
+        guestSessionToken.value = sessionResponse.data.data.token
+        sessionStorage.setItem(guestSessionStorageKey(), guestSessionToken.value)
+      }
+    }
+
     const [catsRes, itemsRes] = await Promise.all([
       categoriesApi.list(),
       menuItemsApi.list({ per_page: 100, is_available: true }),
@@ -464,19 +579,38 @@ onMounted(async () => {
     categories.value = catsRes.data.data
     menuItems.value = itemsRes.data.data.items
   } catch (e) {
-    orderError.value = 'Could not load the menu. Please refresh and try again.'
+    if (e.response?.status === 409) {
+      qrAccessBlocked.value = true
+      qrAccessMessage.value = e.response.data?.message || qrAccessMessage.value
+    } else if (e.response?.status === 410) {
+      guestSessionClosed.value = true
+    } else if (e.response?.status === 404) {
+      tableError.value = 'This table QR code is invalid. Please ask a staff member for help.'
+    } else if (!e.response && tableQrCode.value) {
+      const apiUrl = import.meta.env.VITE_API_URL?.trim()
+        || `${window.location.protocol}//${window.location.hostname}:8000`
+      tableError.value = `Cannot reach the restaurant API at ${apiUrl}. Check that the API server is running and the phone is on the same Wi-Fi network.`
+    } else {
+      orderError.value = 'Could not load the menu. Please refresh and try again.'
+    }
   } finally {
     loading.value = false
   }
 
+  if (qrAccessBlocked.value || guestSessionClosed.value || tableError.value) return
+
   if (tableQrCode.value) {
     try {
-      const response = await tablesApi.getByQrCode(tableQrCode.value)
-      tableInfo.value = response.data.data
       await refreshQrOrders()
       stopLiveRefresh = startLiveRefresh(refreshQrOrders)
     } catch (error) {
-      if (error.response?.status === 404) {
+      if (error.response?.status === 409) {
+        qrAccessBlocked.value = true
+        qrAccessMessage.value = error.response.data?.message || qrAccessMessage.value
+      } else if (error.response?.status === 410) {
+        guestSessionClosed.value = true
+        showCart.value = false
+      } else if (error.response?.status === 404) {
         tableError.value = 'This table QR code is invalid. Please ask a staff member for help.'
       } else if (!error.response) {
         const apiUrl = import.meta.env.VITE_API_URL?.trim()

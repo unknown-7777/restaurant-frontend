@@ -56,6 +56,9 @@ async function fetchTables(silent = false) {
   try {
     const response = await tablesApi.list()
     tables.value = response.data.data
+    if (selectedTable.value) {
+      selectedTable.value = tables.value.find(table => table.id === selectedTable.value.id) || selectedTable.value
+    }
   } finally {
     if (!silent) loading.value = false
   }
@@ -90,6 +93,16 @@ async function changeStatus(table, status) {
   await tablesApi.update(table.id, { status })
   selectedTable.value = null
   await fetchTables()
+}
+
+async function enableQrOrdering(table) {
+  if (!table || table.status !== 'available' || table.qr_access_enabled) return
+  try {
+    await tablesApi.update(table.id, { qr_access_enabled: true })
+    await fetchTables(true)
+  } catch (error) {
+    alert(error.response?.data?.message || 'Could not enable QR ordering for this table.')
+  }
 }
 
 async function deleteTable(table) {
@@ -143,7 +156,7 @@ onUnmounted(() => stopLiveRefresh?.())
       <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
           <h1 class="text-2xl font-bold text-gray-900">Tables</h1>
-          <p class="text-gray-500 text-sm mt-0.5">Manage restaurant tables and status</p>
+          <p class="text-gray-500 text-sm mt-0.5">A QR visit marks the table occupied. Reserved means staff is holding it for a booking; booking times are not tracked here.</p>
         </div>
         <button
           @click="showCreateModal = true"
@@ -265,7 +278,22 @@ onUnmounted(() => stopLiveRefresh?.())
             <span class="text-gray-500">QR Code</span>
             <span class="font-mono text-xs text-gray-400">{{ selectedTable.qr_code?.slice(0, 16) }}...</span>
           </div>
+          <div class="flex justify-between text-sm">
+            <span class="text-gray-500">QR ordering</span>
+            <span class="font-medium" :class="selectedTable.qr_access_enabled ? 'text-green-600' : 'text-gray-500'">
+              {{ selectedTable.qr_access_enabled ? 'Ready for next guest' : 'Closed' }}
+            </span>
+          </div>
         </div>
+
+        <button
+          v-if="!selectedTable.qr_access_enabled"
+          @click="enableQrOrdering(selectedTable)"
+          :disabled="selectedTable.status !== 'available'"
+          class="mb-5 w-full rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {{ selectedTable.status === 'available' ? 'Enable QR for next guest' : 'Mark table Empty to re-enable QR' }}
+        </button>
 
         <div class="border border-gray-200 rounded-xl p-4 mb-6 text-center">
           <p class="text-sm font-semibold text-gray-800 mb-3">Scan to order at this table</p>

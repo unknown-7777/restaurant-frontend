@@ -10,6 +10,8 @@
         <StatCard label="Revenue Today" :value="'$' + stats.revenue" color="green" />
       </div>
 
+      <p v-if="error" class="mb-5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ error }}</p>
+
       <div class="bg-white rounded-xl border border-gray-200 p-6">
         <h2 class="text-lg font-semibold text-gray-900 mb-4">Recent Orders</h2>
         <div v-if="loading" class="text-gray-400 text-sm">Loading...</div>
@@ -36,24 +38,43 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import AppLayout from '../../components/layout/AppLayout.vue'
 import StatCard from '../../components/shared/StatCard.vue'
 import StatusBadge from '../../components/shared/StatusBadge.vue'
-import { ordersApi } from '../../api/orders'
+import { dashboardApi } from '../../api/dashboard'
+import { startLiveRefresh } from '../../utils/liveRefresh'
 
 const orders = ref([])
 const loading = ref(true)
 const stats = ref({ ordersToday: 0, pending: 0, occupied: 0, revenue: '0.00' })
+const error = ref('')
+let stopLiveRefresh
 
-onMounted(async () => {
+async function fetchDashboard(silent = false) {
+  if (!silent) loading.value = true
   try {
-    const response = await ordersApi.list({ per_page: 10 })
-    orders.value = response.data.data.orders
-    stats.value.ordersToday = response.data.data.meta.total
-    stats.value.pending = orders.value.filter(o => o.status === 'pending').length
+    const response = await dashboardApi.summary()
+    const data = response.data.data
+    orders.value = data.recent_orders
+    stats.value = {
+      ordersToday: data.stats.orders_today,
+      pending: data.stats.pending_orders,
+      occupied: data.stats.occupied_tables,
+      revenue: data.stats.revenue_today,
+    }
+    error.value = ''
+  } catch {
+    error.value = 'Could not load dashboard data. Please try again.'
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
+}
+
+onMounted(() => {
+  fetchDashboard()
+  stopLiveRefresh = startLiveRefresh(() => fetchDashboard(true))
 })
+
+onUnmounted(() => stopLiveRefresh?.())
 </script>
