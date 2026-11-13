@@ -40,7 +40,22 @@
     <div v-else-if="tableQrCode && guestSessionClosed" class="max-w-3xl mx-auto px-4 py-12">
       <div class="rounded-xl border border-gray-200 bg-white p-5 text-center text-gray-700 shadow-sm">
         <h2 class="font-bold">This ordering visit has ended</h2>
-        <p class="mt-2 text-sm">To start a new visit, scan the table QR code again.</p>
+        <p class="mt-2 text-sm">Ordering is closed for this visit.</p>
+        <p v-if="orderError" class="mt-3 text-sm text-red-700">{{ orderError }}</p>
+        <section v-if="feedbackOrder && !feedbackSubmitted" class="mt-6 border-t border-gray-200 pt-5 text-left">
+          <h3 class="font-bold text-gray-900">How was your visit?</h3>
+          <p class="mt-1 text-sm text-gray-600">Rate your experience and leave an optional comment.</p>
+          <div class="mt-3 flex gap-2" role="radiogroup" aria-label="Restaurant rating">
+            <button v-for="score in 5" :key="score" @click="feedbackRating = score" :aria-label="`${score} star${score === 1 ? '' : 's'}`" :aria-pressed="feedbackRating === score" class="text-3xl leading-none" :class="feedbackRating >= score ? 'text-amber-400' : 'text-gray-300'">★</button>
+          </div>
+          <textarea v-model="feedbackComment" maxlength="2000" rows="3" placeholder="Tell us about your experience (optional)" class="mt-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"></textarea>
+          <button @click="submitFeedback" :disabled="feedbackLoading || !feedbackRating" class="mt-3 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+            {{ feedbackLoading ? 'Sending…' : 'Send feedback' }}
+          </button>
+        </section>
+        <p v-else-if="feedbackOrder && feedbackSubmitted" class="mt-5 rounded-lg bg-green-50 p-3 text-sm text-green-800">
+          Thank you for rating your visit!
+        </p>
       </div>
     </div>
     <div v-else class="max-w-3xl mx-auto px-4 py-6">
@@ -558,6 +573,8 @@ onMounted(async () => {
           } else if (error.response?.status === 410) {
             guestSessionClosed.value = true
             showCart.value = false
+            guestSessionToken.value = storedSessionToken
+            await refreshQrOrders()
             return
           } else {
             throw error

@@ -116,13 +116,13 @@ const avatarLoading = ref(false)
 const mobileMenuOpen = ref(false)
 
 const allLinks = [
-  { to: '/dashboard', label: 'Dashboard', icon: '📊', roles: ['admin', 'manager'] },
-  { to: '/users',     label: 'Users',      icon: '👥', roles: ['admin'] },
-  { to: '/feedback',  label: 'Feedback',   icon: '⭐', roles: ['admin', 'manager'] },
-  { to: '/menu',      label: 'Menu',       icon: '🍔', roles: ['admin', 'manager'] },
-  { to: '/tables',    label: 'Tables',     icon: '🪑', roles: ['admin', 'manager', 'waiter'] },
-  { to: '/orders',    label: 'Orders',     icon: '📋', roles: ['admin', 'manager', 'waiter', 'cashier'] },
-  { to: '/kitchen',   label: 'Kitchen',    icon: '👨‍🍳', roles: ['admin', 'manager', 'kitchen'] },
+  { to: '/dashboard', label: 'Dashboard',  icon: '📊', roles:  ['admin', 'manager'] },
+  { to: '/users',     label: 'Users',      icon: '👥', roles:  ['admin'] },
+  { to: '/feedback',  label: 'Feedback',   icon: '⭐', roles:  ['admin', 'manager'] },
+  { to: '/menu',      label: 'Menu',       icon: '🍔', roles:  ['admin', 'manager'] },
+  { to: '/tables',    label: 'Tables',     icon: '🪑', roles:  ['admin', 'manager', 'waiter'] },
+  { to: '/orders',    label: 'Orders',     icon: '📋', roles:  ['admin', 'manager', 'waiter', 'cashier'] },
+  { to: '/kitchen',   label: 'Kitchen',    icon: '👨‍🍳', roles:  ['admin', 'manager', 'kitchen'] },
 ]
 
 const visibleLinks = computed(() =>
